@@ -62,11 +62,44 @@ void ObjectEntityDetails::set_shape(const ArraySpec &shape) {
   }
 }
 
+bool ObjectEntityDetails::IsDescriptor() const {
+  if (type_.has_value()) {
+    switch (type_->category()) {
+    case DeclTypeSpec::Category::Intrinsic:
+      if (type_->intrinsicTypeSpec().category() == TypeCategory::Character) {
+        if (true /* TODO: constant character lengths */) {
+          return true;
+        }
+      }
+      break;
+    case DeclTypeSpec::Category::TypeDerived:
+      // TODO: Distinguish kind from len type parameters
+      if (isDummy() || !type_->derivedTypeSpec().paramValues().empty()) {
+        return true;
+      }
+      break;
+    case DeclTypeSpec::Category::ClassDerived:
+    case DeclTypeSpec::Category::TypeStar:
+    case DeclTypeSpec::Category::ClassStar: return true;
+    }
+  }
+  if (IsAssumedShape() || IsDeferredShape() || IsAssumedRank()) {
+    return true;
+  }
+  // TODO: Explicit shape component array dependent on length parameter
+  // TODO: Automatic (adjustable) arrays
+  return false;
+}
+
 ProcEntityDetails::ProcEntityDetails(const EntityDetails &d) {
   if (auto type{d.type()}) {
     interface_.set_type(*type);
   }
 }
+
+// A procedure pointer or dummy procedure must be a descriptor if
+// and only if it requires a static link.
+bool ProcEntityDetails::IsDescriptor() const { return HasExplicitInterface(); }
 
 void TypeParamDetails::set_init(const parser::Expr &expr) {
   init_ = LazyExpr{expr};
@@ -259,6 +292,17 @@ bool Symbol::IsSeparateModuleProc() const {
   if (attrs().test(Attr::MODULE)) {
     if (auto *details{detailsIf<SubprogramDetails>()}) {
       return details->isInterface();
+    }
+  }
+  return false;
+}
+
+bool Symbol::IsDescriptor() const {
+  if (const auto *objectDetails{detailsIf<ObjectEntityDetails>()}) {
+    return objectDetails->IsDescriptor();
+  } else if (const auto *procDetails{detailsIf<ProcEntityDetails>()}) {
+    if (attrs_.test(Attr::POINTER) || attrs_.test(Attr::EXTERNAL)) {
+      return procDetails->IsDescriptor();
     }
   }
   return false;

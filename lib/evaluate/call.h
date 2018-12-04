@@ -77,7 +77,7 @@ struct ProcedureDesignator {
   EVALUATE_UNION_CLASS_BOILERPLATE(ProcedureDesignator)
   explicit ProcedureDesignator(SpecificIntrinsic &&i) : u{std::move(i)} {}
   explicit ProcedureDesignator(const semantics::Symbol &n) : u{&n} {}
-  std::optional<DynamicType> GetType() const;
+  std::optional<DynamicType> GetType() const;  // TODO pmk make non-optional
   int Rank() const;
   bool IsElemental() const;
   Expr<SubscriptInteger> LEN() const;

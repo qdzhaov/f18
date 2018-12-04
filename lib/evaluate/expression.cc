@@ -191,16 +191,17 @@ template<typename T> DynamicType ArrayConstructor<T>::GetType() const {
 
 template<typename A>
 std::optional<DynamicType> ExpressionBase<A>::GetType() const {
-  if constexpr (IsSpecificIntrinsicType<Result>) {
+  if constexpr (IsLengthlessIntrinsicType<Result>) {
     return Result::GetType();
   } else {
     return std::visit(
         [](const auto &x) -> std::optional<DynamicType> {
-          if constexpr (!std::is_same_v<std::decay_t<decltype(x)>,
+          if constexpr (std::is_same_v<std::decay_t<decltype(x)>,
                             BOZLiteralConstant>) {
+            return std::nullopt;  // typeless -> no type
+          } else {
             return x.GetType();
           }
-          return std::nullopt;  // typeless -> no type
         },
         derived().u);
   }

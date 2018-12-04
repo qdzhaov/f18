@@ -56,11 +56,25 @@ struct BaseObject {
   std::variant<const Symbol *, StaticDataObject::Pointer> u;
 };
 
+// R916 type-param-inquiry (and LEN()).
+struct TypeParamInquiry {
+  using Result = SubscriptInteger;
+  CLASS_BOILERPLATE(TypeParamInquiry)
+  explicit TypeParamInquiry(const Symbol &n, const Symbol *p = nullptr)
+    : symbol{&n}, parameter{p} {}
+  static constexpr int Rank() { return 0; }
+  std::ostream &AsFortran(std::ostream &) const;
+  const Symbol *symbol;  // cannot be null, must be pointer for assignability
+  const Symbol *parameter{nullptr};  // null for CHARACTER length
+};
+
 // R913 structure-component & C920: Defined to be a multi-part
 // data-ref whose last part has no subscripts (or image-selector, although
 // that isn't explicit in the document).  Pointer and allocatable components
 // are not explicitly indirected in this representation (TODO: yet?)
 // Complex components (%RE, %IM) are isolated below in ComplexPart.
+// (Type parameter inquiries look like component references but are distinct
+// constructs and not represented by this class.)
 class Component {
 public:
   CLASS_BOILERPLATE(Component)
@@ -238,8 +252,8 @@ private:
 
 // R901 designator is the most general data reference object, apart from
 // calls to pointer-valued functions.  Its variant holds everything that
-// a DataRef can, and possibly either a substring reference or a complex
-// part (%RE/%IM) reference.
+// a DataRef can, and possibly also a type parameter inquiry (incl. LEN()),
+// a substring reference or a complex part (%RE/%IM) reference.
 template<typename A> class Designator {
   using DataRefs = decltype(DataRef::u);
   using MaybeSubstring =
@@ -292,23 +306,12 @@ protected:
 
 template<typename A> struct FunctionRef : public ProcedureRef {
   using Result = A;
-  static_assert(IsSpecificIntrinsicType<Result> ||
-      std::is_same_v<Result, SomeKind<TypeCategory::Derived>>);
   CLASS_BOILERPLATE(FunctionRef)
   FunctionRef(ProcedureRef &&pr) : ProcedureRef{std::move(pr)} {}
   FunctionRef(ProcedureDesignator &&p, ActualArguments &&a)
     : ProcedureRef{std::move(p), std::move(a)} {}
 
-  std::optional<DynamicType> GetType() const {
-    if constexpr (std::is_same_v<Result, SomeDerived>) {
-      if (const Symbol * symbol{proc_.GetSymbol()}) {
-        return GetSymbolType(*symbol);
-      }
-    } else {
-      return Result::GetType();
-    }
-    return std::nullopt;
-  }
+  std::optional<DynamicType> GetType() const { return proc_.GetType(); }
   std::optional<Constant<Result>> Fold(FoldingContext &);  // for intrinsics
 };
 

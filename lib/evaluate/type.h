@@ -18,7 +18,7 @@
 // These definitions map Fortran's intrinsic types, characterized by byte
 // sizes encoded in KIND type parameter values, to their value representation
 // types in the evaluation library, which are parameterized in terms of
-// total bit width and real precision.  Instances of these class templates
+// total bit width and real precision.  Instances of the Type class template
 // are suitable for use as template parameters to instantiate other class
 // templates, like expressions, over the supported types and kinds.
 
@@ -47,15 +47,16 @@ using common::TypeCategory;
 struct DynamicType {
   bool operator==(const DynamicType &that) const {
     return category == that.category && kind == that.kind &&
-        derived == that.derived;
+        derived == that.derived && descriptor == that.descriptor;
   }
   std::string AsFortran() const;
   DynamicType ResultTypeForMultiply(const DynamicType &) const;
 
   TypeCategory category;
-  int kind{0};  // unused when category == Derived
-  const semantics::DerivedTypeSpec *derived{nullptr};  // category == Derived
-  const semantics::Symbol *descriptor{nullptr};  // for length type parameters
+  int kind{0};  // valid for intrinsic types
+  const semantics::DerivedTypeSpec *derived{nullptr};
+  const semantics::Symbol *descriptor{nullptr};
+  std::optional<std::uint64_t> characterLen;  // when known and constant
 };
 
 std::optional<DynamicType> GetSymbolType(const semantics::Symbol &);
@@ -64,29 +65,12 @@ std::optional<DynamicType> GetSymbolType(const semantics::Symbol &);
 // this class template Type<CATEGORY, KIND>.
 template<TypeCategory CATEGORY, int KIND = 0> class Type;
 
-template<TypeCategory CATEGORY, int KIND> struct TypeBase {
+template<TypeCategory CATEGORY, int KIND = 0> struct TypeBase {
   static constexpr TypeCategory category{CATEGORY};
   static constexpr int kind{KIND};
   static constexpr DynamicType GetType() { return {category, kind}; }
   static std::string AsFortran() { return GetType().AsFortran(); }
 };
-
-// CHARACTER types need to have a DynamicType with a symbol for LEN.
-template<int KIND> struct TypeBase<TypeCategory::Character, KIND> {
-  static constexpr TypeCategory category{TypeCategory::Character};
-  static constexpr int kind{KIND};
-  DynamicType dynamicType{category, kind};
-  static constexpr DynamicType GetType() { return dynamicType; }
-  static std::string AsFortran() { return GetType().AsFortran(); }
-}
-
-// Derived types need to have a DynamicType with type & maybe a symbol.
-template<> struct TypeBase<TypeCategory::Derived> {
-  static constexpr TypeCategory category{TypeCategory::Derived};
-  DynamicType dynamicType{category};
-  static constexpr DynamicType GetType() { return dynamicType; }
-  static std::string AsFortran() { return GetType().AsFortran(); }
-}
 
 template<int KIND>
 class Type<TypeCategory::Integer, KIND>
@@ -240,10 +224,18 @@ using FloatingTypes = common::CombineTuples<RealTypes, ComplexTypes>;
 using NumericTypes = common::CombineTuples<IntegerTypes, FloatingTypes>;
 using RelationalTypes = common::CombineTuples<NumericTypes, CharacterTypes>;
 using AllIntrinsicTypes = common::CombineTuples<RelationalTypes, LogicalTypes>;
+using LengthlessIntrinsicTypes =
+    common::CombineTuples<NumericTypes, LogicalTypes>;
 
 // Predicate: does a type represent a specific intrinsic type?
 template<typename T>
 constexpr bool IsSpecificIntrinsicType{common::HasMember<T, AllIntrinsicTypes>};
+
+// Predicate: is a type completely characterized by its category and kind,
+// or might it have a derived type &/or length parameters?
+template<typename T>
+constexpr bool IsLengthlessIntrinsicType{
+    common::HasMember<T, LengthlessIntrinsicTypes>};
 
 // When Scalar<T> is S, then TypeOf<S> is T.
 // TypeOf is implemented by scanning all supported types for a match
@@ -273,14 +265,20 @@ public:
   static constexpr TypeCategory category{TypeCategory::Derived};
 
   CLASS_BOILERPLATE(SomeKind)
-  explicit SomeKind(const semantics::DerivedTypeSpec &s) : spec_{&s} {}
+  explicit SomeKind(const semantics::DerivedTypeSpec &dts,
+      const semantics::Symbol *sym = nullptr)
+    : spec_{&dts}, descriptor_{sym} {}
 
-  DynamicType GetType() const { return DynamicType{category, 0, spec_}; }
+  DynamicType GetType() const {
+    return DynamicType{category, 0, spec_, descriptor_};
+  }
   const semantics::DerivedTypeSpec &spec() const { return *spec_; }
+  const semantics::Symbol *descriptor() const { return descriptor_; }
   std::string AsFortran() const;
 
 private:
   const semantics::DerivedTypeSpec *spec_;
+  const semantics::Symbol *descriptor_{nullptr};
 };
 
 using SomeInteger = SomeKind<TypeCategory::Integer>;
@@ -361,7 +359,15 @@ template<typename T> struct Constant {
   Constant(std::enable_if_t<!std::is_reference_v<A>, A> &&x)
     : value(std::move(x)) {}
 
-  constexpr DynamicType GetType() const { return Result::GetType(); }
+  constexpr DynamicType GetType() const {
+    if (Result::category == TypeCategory::Character) {
+      DynamicType type{Result::category, Result::kind};
+      type.characterLen = value.size();
+      return type;
+    } else {
+      return Result::GetType();
+    }
+  }
   int Rank() const { return 0; }
   std::ostream &AsFortran(std::ostream &) const;
 

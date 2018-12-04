@@ -123,15 +123,24 @@ public:
   const ArraySpec &shape() const { return shape_; }
   void set_shape(const ArraySpec &shape);
   bool isDummy() const { return isDummy_; }
-  bool isArray() const { return !shape_.empty(); }
+  bool IsArray() const { return !shape_.empty(); }
+  bool IsAssumedShape() const {
+    return isDummy() && IsArray() && shape_.back().ubound().isDeferred() &&
+        !shape_.back().lbound().isDeferred();
+  }
+  bool IsDeferredShape() const {
+    return !isDummy() && IsArray() && shape_.back().ubound().isDeferred() &&
+        shape_.back().lbound().isDeferred();
+  }
   bool IsAssumedSize() const {
-    return isDummy() && isArray() && shape_.back().ubound().isAssumed() &&
+    return isDummy() && IsArray() && shape_.back().ubound().isAssumed() &&
         !shape_.back().lbound().isAssumed();
   }
   bool IsAssumedRank() const {
-    return isDummy() && isArray() && shape_.back().ubound().isAssumed() &&
+    return isDummy() && IsArray() && shape_.back().ubound().isAssumed() &&
         shape_.back().lbound().isAssumed();
   }
+  bool IsDescriptor() const;
 
 private:
   bool isDummy_;
@@ -151,6 +160,7 @@ public:
   ProcInterface &interface() { return interface_; }
   void set_interface(const ProcInterface &interface) { interface_ = interface; }
   bool HasExplicitInterface() const;
+  bool IsDescriptor() const;
 
 private:
   ProcInterface interface_;
@@ -381,6 +391,7 @@ public:
   bool IsSubprogram() const;
   bool HasExplicitInterface() const;
   bool IsSeparateModuleProc() const;
+  bool IsDescriptor() const;
 
   bool operator==(const Symbol &that) const { return this == &that; }
   bool operator!=(const Symbol &that) const { return this != &that; }

@@ -269,6 +269,15 @@ std::ostream &BaseObject::AsFortran(std::ostream &o) const {
   return Emit(o, u);
 }
 
+std::ostream &TypeParamInquiry::AsFortran(std::ostream &o) const {
+  if (parameter == nullptr) {
+    o << "len(" << symbol->name().ToString() << ')';
+  } else {
+    o << symbol->name().ToString() << '%' << parameter->name().ToString();
+  }
+  return o;
+}
+
 std::ostream &Component::AsFortran(std::ostream &o) const {
   base_->AsFortran(o);
   return Emit(o << '%', symbol_);
@@ -637,14 +646,12 @@ const Symbol *ProcedureDesignator::GetSymbol() const {
 }
 
 template<typename T> std::optional<DynamicType> Designator<T>::GetType() const {
-  if constexpr (std::is_same_v<Result, SomeDerived>) {
-    if (const Symbol * symbol{GetLastSymbol()}) {
-      return GetSymbolType(*symbol);
-    } else {
-      return std::nullopt;
-    }
-  } else {
+  if constexpr (IsLengthlessIntrinsicType<Result>) {
     return {Result::GetType()};
+  } else if (const Symbol * symbol{GetLastSymbol()}) {
+    return GetSymbolType(*symbol);
+  } else {
+    return std::nullopt;
   }
 }
 

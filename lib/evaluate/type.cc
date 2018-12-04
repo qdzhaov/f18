@@ -32,14 +32,24 @@ std::optional<DynamicType> GetSymbolType(const semantics::Symbol &symbol) {
         TypeCategory category{details->type()->intrinsicTypeSpec().category()};
         int kind{details->type()->intrinsicTypeSpec().kind()};
         if (IsValidKindOfIntrinsicType(category, kind)) {
-          return std::make_optional(DynamicType{category, kind});
+          DynamicType type{category, kind};
+          if (category == TypeCategory::Character) {
+            // TODO pmk: when character length is known constant, set
+            // characterLen instead.
+            type.descriptor = &symbol;
+          }
+          return std::make_optional(std::move(type));
         }
         break;
       }
       case semantics::DeclTypeSpec::Category::TypeDerived:
-      case semantics::DeclTypeSpec::Category::ClassDerived:
-        return std::make_optional(DynamicType{
-            TypeCategory::Derived, 0, &details->type()->derivedTypeSpec()});
+      case semantics::DeclTypeSpec::Category::ClassDerived: {
+        DynamicType type{TypeCategory::Derived};
+        type.derived = &details->type()->derivedTypeSpec();
+        // TODO pmk: set this only when it's a descriptor
+        type.descriptor = &symbol;
+        return std::make_optional(std::move(type));
+      }
       default:;
       }
     }

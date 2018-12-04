@@ -422,14 +422,13 @@ struct ArrayConstructor : public ArrayConstructorValues<RESULT> {
   std::vector<Expr<SubscriptInteger>> typeParameterValues;
 };
 
-// Per-category expression representations
+// Expression representations for each type category.
 
 template<int KIND>
 class Expr<Type<TypeCategory::Integer, KIND>>
   : public ExpressionBase<Type<TypeCategory::Integer, KIND>> {
 public:
   using Result = Type<TypeCategory::Integer, KIND>;
-  // TODO: R916 type-param-inquiry
 
   EVALUATE_UNION_CLASS_BOILERPLATE(Expr)
   explicit Expr(const Scalar<Result> &x) : u{Constant<Result>{x}} {}
@@ -445,9 +444,12 @@ private:
       Power<Result>, Extremum<Result>>;
   using Others = std::variant<Constant<Result>, ArrayConstructor<Result>,
       Designator<Result>, FunctionRef<Result>>;
+  using Inquiries = std::conditional_t<
+      std::is_same_v<Result, typename TypeParamInquiry::Result>,
+      std::variant<TypeParamInquiry>, std::variant<>>;
 
 public:
-  common::CombineVariants<Operations, Conversions, Others> u;
+  common::CombineVariants<Operations, Conversions, Others, Inquiries> u;
 };
 
 template<int KIND>
