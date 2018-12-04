@@ -53,10 +53,9 @@ struct DynamicType {
   DynamicType ResultTypeForMultiply(const DynamicType &) const;
 
   TypeCategory category;
-  int kind{0};
-  const semantics::DerivedTypeSpec *derived{nullptr};
-  // TODO pmk: descriptor for character length
-  // TODO pmk: derived type kind parameters and descriptor for lengths
+  int kind{0};  // unused when category == Derived
+  const semantics::DerivedTypeSpec *derived{nullptr};  // category == Derived
+  const semantics::Symbol *descriptor{nullptr};  // for length type parameters
 };
 
 std::optional<DynamicType> GetSymbolType(const semantics::Symbol &);
@@ -66,12 +65,28 @@ std::optional<DynamicType> GetSymbolType(const semantics::Symbol &);
 template<TypeCategory CATEGORY, int KIND = 0> class Type;
 
 template<TypeCategory CATEGORY, int KIND> struct TypeBase {
-  static constexpr DynamicType dynamicType{CATEGORY, KIND};
-  static constexpr DynamicType GetType() { return {dynamicType}; }
   static constexpr TypeCategory category{CATEGORY};
   static constexpr int kind{KIND};
-  static std::string AsFortran() { return dynamicType.AsFortran(); }
+  static constexpr DynamicType GetType() { return {category, kind}; }
+  static std::string AsFortran() { return GetType().AsFortran(); }
 };
+
+// CHARACTER types need to have a DynamicType with a symbol for LEN.
+template<int KIND> struct TypeBase<TypeCategory::Character, KIND> {
+  static constexpr TypeCategory category{TypeCategory::Character};
+  static constexpr int kind{KIND};
+  DynamicType dynamicType{category, kind};
+  static constexpr DynamicType GetType() { return dynamicType; }
+  static std::string AsFortran() { return GetType().AsFortran(); }
+}
+
+// Derived types need to have a DynamicType with type & maybe a symbol.
+template<> struct TypeBase<TypeCategory::Derived> {
+  static constexpr TypeCategory category{TypeCategory::Derived};
+  DynamicType dynamicType{category};
+  static constexpr DynamicType GetType() { return dynamicType; }
+  static std::string AsFortran() { return GetType().AsFortran(); }
+}
 
 template<int KIND>
 class Type<TypeCategory::Integer, KIND>
